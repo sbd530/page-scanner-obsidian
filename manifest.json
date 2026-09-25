@@ -1,0 +1,10 @@
+{
+  "id": "page-scanner",
+  "name": "Page Scanner",
+  "version": "1.0.0",
+  "minAppVersion": "1.4.0",
+  "description": "Save a browser tab into your vault as a vector PDF and a Markdown note, through the Page Scanner browser extension.",
+  "author": "sbd530",
+  "authorUrl": "https://pagescanner.app",
+  "isDesktopOnly": true
+}
