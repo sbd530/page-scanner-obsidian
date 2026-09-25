@@ -6,7 +6,8 @@ folder of your vault: the PDF, with its text still selectable and searchable, an
 page's text as Markdown and the PDF embedded under its properties.
 
 It works through [Page Scanner](https://pagescanner.app), a Chrome and Edge extension that
-captures whole pages, and carries Page Scanner's command-line tool inside it. Desktop only.
+captures whole pages, and Page Scanner's command-line tool, which you install with npm. Desktop
+only.
 
 ## What a scan leaves in the vault
 
@@ -39,9 +40,17 @@ vault already holds gets ` 2`, ` 3` added.
    [Chrome Web Store](https://chromewebstore.google.com/detail/page-scanner/oinkohacnbkapdnnhpidmoidmidlgaoj)
    or [Edge Add-ons](https://microsoftedge.microsoft.com/addons/detail/edlmbcahnbpdfibbimdkdbgiemadanhh),
    in Chrome, Edge, Brave, Arc or Vivaldi.
-2. Have [Node.js](https://nodejs.org) 22 or newer on the computer. Obsidian cannot run the
-   command-line tool with its own runtime, so the plugin uses the Node it finds (Homebrew's,
-   `/usr/local/bin`, Volta's, fnm's default, or your shell's), or the one named in its settings.
+2. Have [Node.js](https://nodejs.org) 22 or newer on the computer, and install the command-line
+   tool in a terminal:
+
+   ```sh
+   npm install -g @page-scanner/cli
+   ```
+
+   Obsidian cannot run it with its own runtime, so the plugin looks for it beside each Node it
+   finds (Homebrew's, `/usr/local/bin`, Volta's, fnm's default, or your shell's) and runs it on
+   the Node it was installed for. A Node can also be named in the plugin's settings.
+
 3. Enable the plugin and open its settings. The steps at the top say what is done: press
    **Install helper**, then open the extension's settings (the gear in its popup), go to
    **Local agents** and press **Connect**.
@@ -67,9 +76,10 @@ from Obsidian.
 
 ## What it does outside the vault
 
-- **Files outside the vault.** The plugin writes Page Scanner's command-line tool (the published
-  [`@page-scanner/cli`](https://www.npmjs.com/package/@page-scanner/cli) package, bundled into
-  `main.js`) into `~/.page-scanner/obsidian-cli/` and runs it from there with Node.js. The tool writes each scan into
+- **Files outside the vault.** The plugin runs Page Scanner's command-line tool, the
+  [`@page-scanner/cli`](https://www.npmjs.com/package/@page-scanner/cli) package you install with
+  npm, as a separate process with Node.js; to find it, it reads the global `node_modules` folder
+  of each Node on the computer (and asks their npm where that is). The tool writes each scan into
   the system's temporary folder before the plugin moves it into the vault, and keeps its pairing
   and settings in `~/.page-scanner/`. **Install helper** writes a small launcher there, and for
   each browser a file saying where the launcher is: in the browser's `NativeMessagingHosts`
@@ -80,11 +90,10 @@ from Obsidian.
   tool's own commands, both behind a token. The page is captured by your own browser, as it is
   already loaded there. Nothing is sent to Page Scanner or anyone else, and there is no
   telemetry.
-- **Nothing is downloaded.** The command-line tool is inside the plugin's release, and is checked
-  against the SHA-256 recorded when it was built before every run. The plugin does not fetch or
-  update code.
+- **Nothing is downloaded or installed by the plugin.** The command-line tool is yours to install
+  and update with npm; the plugin only runs the copy it finds, and never fetches code.
 
 ## License
 
-Apache-2.0. The bundled command-line tool, `@page-scanner/cli`, is Apache-2.0 as well, by the same
+Apache-2.0. The command-line tool it runs, `@page-scanner/cli`, is Apache-2.0 as well, by the same
 author.

@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { checkNode, findNode, stableNodePaths, type NodeProbe } from './node';
+import { listNodes, namedNode, stableNodePaths, type NodeProbe } from './node';
 
 function probe(versions: Record<string, number | null>, shell: string | null = null): NodeProbe {
   return {
@@ -9,45 +9,36 @@ function probe(versions: Record<string, number | null>, shell: string | null = n
   };
 }
 
-describe('findNode', () => {
-  it('takes the first stable path that runs a Node of 22 or later', async () => {
-    const found = await findNode(
-      ['/opt/homebrew/bin/node', '/usr/local/bin/node'],
-      probe({ '/opt/homebrew/bin/node': 26, '/usr/local/bin/node': 22 }),
-    );
-    expect(found).toEqual({ ok: true, path: '/opt/homebrew/bin/node', major: 26 });
-  });
-
-  it('passes over a Node that is too old or does not run', async () => {
-    const found = await findNode(['/a', '/b', '/c'], probe({ '/a': 20, '/b': null, '/c': 24 }));
-    expect(found).toEqual({ ok: true, path: '/c', major: 24 });
-  });
-
-  it("falls back to the login shell's Node", async () => {
+describe('listNodes', () => {
+  it('lists every stable path that runs, in order, then the login shell Node', async () => {
     const shell = '/Users/me/.local/share/fnm/node-versions/v24.14.0/installation/bin/node';
-    const found = await findNode(['/opt/homebrew/bin/node'], probe({ [shell]: 24 }, shell));
-    expect(found).toEqual({ ok: true, path: shell, major: 24 });
+    const nodes = await listNodes(
+      ['/opt/homebrew/bin/node', '/usr/local/bin/node', '/broken', '/old'],
+      probe({ '/opt/homebrew/bin/node': 26, '/broken': null, '/old': 18, [shell]: 24 }, shell),
+    );
+    expect(nodes).toEqual([
+      { path: '/opt/homebrew/bin/node', major: 26 },
+      { path: '/old', major: 18 },
+      { path: shell, major: 24 },
+    ]);
   });
 
-  it('names the newest Node it found when all are too old', async () => {
-    const found = await findNode(['/a', '/b'], probe({ '/a': 18, '/b': 20 }));
-    expect(found).toEqual({ ok: false, tooOld: { path: '/b', major: 20 } });
+  it('does not list the login shell Node twice', async () => {
+    const nodes = await listNodes(['/a'], probe({ '/a': 22 }, '/a'));
+    expect(nodes).toEqual([{ path: '/a', major: 22 }]);
   });
 
   it('finds nothing on a computer without Node', async () => {
-    expect(await findNode(['/a'], probe({}))).toEqual({ ok: false });
+    expect(await listNodes(['/a'], probe({}))).toEqual([]);
   });
 });
 
-describe('checkNode', () => {
-  it('accepts a named Node of 22 or later, and says when it is older', async () => {
-    const versions = probe({ '/new': 22, '/old': 20 });
-    expect(await checkNode('/new', versions)).toEqual({ ok: true, path: '/new', major: 22 });
-    expect(await checkNode('/old', versions)).toEqual({
-      ok: false,
-      tooOld: { path: '/old', major: 20 },
-    });
-    expect(await checkNode('/missing', versions)).toEqual({ ok: false });
+describe('namedNode', () => {
+  it('is the named Node when it runs, and nothing otherwise', async () => {
+    const versions = probe({ '/new': 22, '/broken': null });
+    expect(await namedNode('/new', versions)).toEqual([{ path: '/new', major: 22 }]);
+    expect(await namedNode('/broken', versions)).toEqual([]);
+    expect(await namedNode('/missing', versions)).toEqual([]);
   });
 });
 

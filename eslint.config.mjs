@@ -4,8 +4,8 @@ import obsidianmd from 'eslint-plugin-obsidianmd';
 import globals from 'globals';
 
 export default defineConfig([
-  // Written by scripts/vendor-cli.mjs and scripts/build.mjs.
-  { ignores: ['vendor/', 'dist/', 'node_modules/'] },
+  // Written by scripts/build.mjs.
+  { ignores: ['dist/', 'node_modules/'] },
   ...obsidianmd.configs.recommended,
   {
     rules: {

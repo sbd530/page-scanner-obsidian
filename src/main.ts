@@ -4,15 +4,14 @@
  * beside it (F13's `scan --markdown beside`), and puts both in the vault, the Markdown as a note
  * that embeds the PDF. The settings tab carries the setup steps and the scan's options.
  *
- * The CLI runs as a child process under a Node on this computer (lib/node.ts says why not
- * Obsidian's), from the copy main.js carries, written to `~/.page-scanner/obsidian-cli/<version>/`
- * (lib/vendored.ts): beside the CLI's own files, outside the vault, and never over the plugin's.
+ * The CLI is the user's own install of `@page-scanner/cli` from npm, run as a child process on
+ * the Node it was installed for (lib/setup.ts finds the pair; lib/node.ts says why not Obsidian's
+ * runtime). The plugin carries no copy of it and writes nothing outside the vault itself.
  */
 import { mkdtempSync, readFileSync, rmSync } from 'node:fs';
-import { homedir, tmpdir } from 'node:os';
+import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { normalizePath, Notice, Plugin, type TFile } from 'obsidian';
-import vendoredFiles from 'virtual:page-scanner-cli';
 import {
   isSetupMissing,
   type ScanAnswer,
@@ -21,15 +20,14 @@ import {
 } from './lib/cli-answer';
 import { runCli, type Cli } from './lib/cli';
 import { helperState } from './lib/helper-state';
-import { resolveNode, type NodeFound } from './lib/node';
+import { globalRoots, installedCliVersion, nodesToTry, type NodeVersion } from './lib/node';
 import { freeStem, noteStem, noteText } from './lib/note';
 import { failure, notConnected, Problem } from './lib/problem';
 import { scanArgs, type ScanSettings } from './lib/scan-args';
+import { findSetup, INSTALL_COMMAND, type Setup } from './lib/setup';
 import { orderTabs, type Tab } from './lib/tabs';
-import { writeVendoredCli } from './lib/vendored';
 import { PageScannerSettingTab } from './settings-tab';
 import { pickTab } from './tab-modal';
-import { CLI_VENDOR } from './vendor/cli-integrity';
 
 export interface PageScannerSettings extends ScanSettings {
   /** The vault folder scans go in; the vault's root when empty. */
@@ -61,7 +59,8 @@ const SCAN_TIMEOUT_MS = 10 * 60_000;
 
 export default class PageScannerPlugin extends Plugin {
   override settings: PageScannerSettings = { ...DEFAULT_SETTINGS };
-  private node: Promise<NodeFound> | null = null;
+  private nodes: Promise<NodeVersion[]> | null = null;
+  private readonly roots = new Map<string, Promise<string[]>>();
   private busy = false;
 
   override async onload(): Promise<void> {
@@ -82,29 +81,47 @@ export default class PageScannerPlugin extends Plugin {
     await this.saveData(this.settings);
   }
 
-  /** The Node to run the CLI with, looked for once per session or per change of the setting. */
-  findNode(again = false): Promise<NodeFound> {
-    if (again || !this.node) this.node = resolveNode(this.settings.nodePath);
-    return this.node;
+  /**
+   * The Node and the installed CLI to run, looked for again on every call: the CLI may have been
+   * installed a moment ago. `again` also looks for the Nodes again, which the first check of the
+   * settings tab and a change of the Node setting ask for; otherwise they, and each Node's
+   * global folders, are looked for once, since that runs a login shell and npm.
+   */
+  lookUp(again = false): Promise<Setup> {
+    if (again || !this.nodes) {
+      this.nodes = nodesToTry(this.settings.nodePath);
+      this.roots.clear();
+    }
+    const nodes = this.nodes;
+    return findSetup({
+      nodes: () => nodes,
+      globalRoots: (node) => {
+        let roots = this.roots.get(node);
+        if (!roots) this.roots.set(node, (roots = globalRoots(node)));
+        return roots;
+      },
+      cliVersion: installedCliVersion,
+    });
   }
 
-  /** A Node and the CLI written where it can run it, or a Problem saying which is missing. */
+  /** The Node and the CLI to run, or a Problem saying which is missing. */
   async cli(): Promise<Cli> {
-    const node = await this.findNode();
-    if (!node.ok) {
+    const setup = await this.lookUp();
+    if (setup.ok) return { node: setup.node, entry: setup.entry };
+    if (setup.missing === 'node') {
       throw new Problem('Page Scanner needs Node.js 22 or later', {
-        hint: node.tooOld
-          ? `The newest Node found is ${String(node.tooOld.major)} (${node.tooOld.path}).`
+        hint: setup.tooOld
+          ? `The newest Node found is ${String(setup.tooOld.major)} (${setup.tooOld.path}).`
           : 'None was found on this computer. Install it from nodejs.org, or name one in the settings.',
         inSettings: true,
       });
     }
-    // One copy per CLI version, shared by every vault, where the CLI keeps its pairing and helper.
-    const directory = join(homedir(), '.page-scanner', 'obsidian-cli', CLI_VENDOR.version);
-    return {
-      node: node.path,
-      bundle: writeVendoredCli(directory, vendoredFiles, CLI_VENDOR.sha256),
-    };
+    throw new Problem(
+      setup.old
+        ? `Page Scanner's command is ${setup.old.version}, older than this plugin needs`
+        : "Page Scanner's command is not installed",
+      { hint: `Run ${INSTALL_COMMAND} in a terminal, then try again.`, inSettings: true },
+    );
   }
 
   /** Writes the helper's manifests, naming the Node the plugin runs the CLI with. */

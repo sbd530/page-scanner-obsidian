@@ -10,9 +10,9 @@
  * gone once the shell is. No `obsidian` import, so it is tested.
  */
 import { execFile } from 'node:child_process';
-import { existsSync, realpathSync } from 'node:fs';
+import { existsSync, readFileSync, realpathSync } from 'node:fs';
 import { homedir } from 'node:os';
-import { join } from 'node:path';
+import { delimiter, dirname, join } from 'node:path';
 
 /** The oldest Node the CLI's commands were run on (Raycast's, when this was written). */
 export const MIN_NODE_MAJOR = 22;
@@ -47,50 +47,49 @@ export function stableNodePaths(
   ];
 }
 
-export type NodeFound =
-  | { ok: true; path: string; major: number }
-  /** `tooOld` names the newest Node that was found, when every one was older than 22. */
-  | { ok: false; tooOld?: { path: string; major: number } };
+export interface NodeVersion {
+  path: string;
+  major: number;
+}
 
-/** The first Node, 22 or later, among the stable paths and then the login shell's. */
-export async function findNode(
+/**
+ * Every Node that runs, among the stable paths and then the login shell's, in that order: the
+ * caller wants the first one of 22 or later that has the CLI installed beside it (./setup.ts).
+ */
+export async function listNodes(
   candidates: readonly string[],
   probe: NodeProbe,
-): Promise<NodeFound> {
-  let tooOld: { path: string; major: number } | undefined;
-  const consider = async (path: string): Promise<NodeFound | null> => {
+): Promise<NodeVersion[]> {
+  const found: NodeVersion[] = [];
+  const consider = async (path: string) => {
     const major = await probe.major(path);
-    if (major === null) return null;
-    if (major >= MIN_NODE_MAJOR) return { ok: true, path, major };
-    if (!tooOld || major > tooOld.major) tooOld = { path, major };
-    return null;
+    if (major !== null) found.push({ path, major });
   };
   for (const path of candidates) {
-    if (!probe.exists(path)) continue;
-    const found = await consider(path);
-    if (found) return found;
+    if (probe.exists(path)) await consider(path);
   }
   const fromShell = await probe.shellNode();
-  if (fromShell && !candidates.includes(fromShell)) {
-    const found = await consider(fromShell);
-    if (found) return found;
-  }
-  return tooOld ? { ok: false, tooOld } : { ok: false };
+  if (fromShell && !candidates.includes(fromShell)) await consider(fromShell);
+  return found;
 }
 
-/** Checks a Node named in the settings. */
-export async function checkNode(path: string, probe: NodeProbe): Promise<NodeFound> {
-  if (!probe.exists(path)) return { ok: false };
+/** A Node named in the settings, as a list of one when it runs. */
+export async function namedNode(path: string, probe: NodeProbe): Promise<NodeVersion[]> {
+  if (!probe.exists(path)) return [];
   const major = await probe.major(path);
-  if (major === null) return { ok: false };
-  return major >= MIN_NODE_MAJOR
-    ? { ok: true, path, major }
-    : { ok: false, tooOld: { path, major } };
+  return major === null ? [] : [{ path, major }];
 }
 
-function run(file: string, args: string[], timeout: number): Promise<string | null> {
+function run(
+  file: string,
+  args: string[],
+  timeout: number,
+  options: { env?: NodeJS.ProcessEnv; shell?: boolean } = {},
+): Promise<string | null> {
   return new Promise((resolve) => {
-    execFile(file, args, { timeout }, (error, stdout) => resolve(error ? null : stdout));
+    execFile(file, args, { timeout, ...options }, (error, stdout) =>
+      resolve(error ? null : String(stdout)),
+    );
   });
 }
 
@@ -120,9 +119,46 @@ export const systemProbe: NodeProbe = {
   },
 };
 
-/** The Node to use: the one named in the settings, or the first found on this computer. */
-export function resolveNode(configured: string): Promise<NodeFound> {
+/** The Nodes to consider: the one named in the settings, or every one found on this computer. */
+export function nodesToTry(configured: string): Promise<NodeVersion[]> {
   const named = configured.trim();
-  if (named) return checkNode(named, systemProbe);
-  return findNode(stableNodePaths(process.platform, homedir(), process.env), systemProbe);
+  if (named) return namedNode(named, systemProbe);
+  return listNodes(stableNodePaths(process.platform, homedir(), process.env), systemProbe);
+}
+
+/**
+ * The global `node_modules` folders a Node's npm installs into: what `npm root -g` beside it
+ * answers (a prefix set in `.npmrc` included), and the default for its layout, `<prefix>/lib/
+ * node_modules` beside `<prefix>/bin/node`, or `%APPDATA%\\npm\\node_modules` on Windows.
+ */
+export async function globalRoots(node: string): Promise<string[]> {
+  const roots: string[] = [];
+  const bin = dirname(node);
+  const npm = join(bin, process.platform === 'win32' ? 'npm.cmd' : 'npm');
+  if (existsSync(npm)) {
+    const out = await run(npm, ['root', '-g'], 10_000, {
+      env: { ...process.env, PATH: `${bin}${delimiter}${process.env.PATH ?? ''}` },
+      shell: process.platform === 'win32',
+    });
+    const root = out?.trim().split(/\r?\n/).pop()?.trim();
+    if (root) roots.push(root);
+  }
+  roots.push(
+    process.platform === 'win32'
+      ? join(process.env.APPDATA ?? join(homedir(), 'AppData', 'Roaming'), 'npm', 'node_modules')
+      : join(dirname(bin), 'lib', 'node_modules'),
+  );
+  return [...new Set(roots)];
+}
+
+/** The version of the CLI installed in a global root, or null. */
+export function installedCliVersion(root: string): string | null {
+  try {
+    const pkg = JSON.parse(
+      readFileSync(join(root, '@page-scanner', 'cli', 'package.json'), 'utf8'),
+    ) as { version?: unknown };
+    return typeof pkg.version === 'string' ? pkg.version : null;
+  } catch {
+    return null;
+  }
 }

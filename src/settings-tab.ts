@@ -5,14 +5,15 @@
 import { PluginSettingTab, Setting, type App } from 'obsidian';
 import type { StatusAnswer } from './lib/cli-answer';
 import { helperState, type HelperState } from './lib/helper-state';
-import { MIN_NODE_MAJOR, type NodeFound } from './lib/node';
+import { MIN_NODE_MAJOR } from './lib/node';
 import { Problem, STORE_URL } from './lib/problem';
+import { INSTALL_COMMAND, MIN_CLI_VERSION, type Setup } from './lib/setup';
 import type PageScannerPlugin from './main';
 
 const RECHECK_MS = 3_000;
 
 interface Progress {
-  node: NodeFound;
+  setup: Setup;
   status?: StatusAnswer;
   error?: string;
 }
@@ -142,7 +143,7 @@ export class PageScannerSettingTab extends PluginSettingTab {
           .onChange(async (value) => {
             settings.nodePath = value;
             await save();
-            void this.plugin.findNode(true);
+            void this.plugin.lookUp(true);
           }),
       );
     new Setting(containerEl)
@@ -162,7 +163,7 @@ export class PageScannerSettingTab extends PluginSettingTab {
     this.setupEl = null;
   }
 
-  /** Checks the setup again and redraws it; `first` also looks for Node again. */
+  /** Checks the setup again and redraws it; `first` also looks for the Nodes again. */
   private async refresh(first: boolean): Promise<void> {
     if (this.working) return;
     this.working = true;
@@ -175,12 +176,12 @@ export class PageScannerSettingTab extends PluginSettingTab {
   }
 
   private async check(first: boolean): Promise<Progress> {
-    const node = await this.plugin.findNode(first);
-    if (!node.ok) return { node };
+    const setup = await this.plugin.lookUp(first);
+    if (!setup.ok) return { setup };
     try {
-      return { node, status: await this.plugin.status(await this.plugin.cli()) };
+      return { setup, status: await this.plugin.status(await this.plugin.cli()) };
     } catch (error) {
-      return { node, error: error instanceof Error ? error.message : String(error) };
+      return { setup, error: error instanceof Error ? error.message : String(error) };
     }
   }
 
@@ -191,17 +192,41 @@ export class PageScannerSettingTab extends PluginSettingTab {
       text: 'The plugin scans through the Page Scanner extension in your browser, which needs a small helper on this computer to talk to it.',
     });
 
-    const { node } = progress;
-    new Setting(el)
-      .setName('1. Node.js')
-      .setDesc(
-        node.ok
-          ? `Done. ${node.path} (${String(node.major)}).`
-          : node.tooOld
-            ? `To do. The newest Node found is ${String(node.tooOld.major)} (${node.tooOld.path}); install ${String(MIN_NODE_MAJOR)} or later from nodejs.org, or name one under Advanced.`
-            : `To do. Install Node.js ${String(MIN_NODE_MAJOR)} or later from nodejs.org, or name one under Advanced.`,
+    const { setup } = progress;
+    const node = new Setting(el).setName('1. Node.js');
+    if (!setup.ok && setup.missing === 'node') {
+      node.setDesc(
+        setup.tooOld
+          ? `To do. The newest Node found is ${String(setup.tooOld.major)} (${setup.tooOld.path}); install ${String(MIN_NODE_MAJOR)} or later from nodejs.org, or name one under Advanced.`
+          : `To do. Install Node.js ${String(MIN_NODE_MAJOR)} or later from nodejs.org, or name one under Advanced.`,
       );
-    if (!node.ok) return;
+      return;
+    }
+    node.setDesc(`Done. ${setup.node} (${String(setup.nodeMajor)}).`);
+
+    const command = new Setting(el).setName("2. Install Page Scanner's command");
+    if (setup.ok) {
+      command.setDesc(`Done. @page-scanner/cli ${setup.version}.`);
+    } else {
+      command
+        .setDesc(
+          createFragment((fragment) => {
+            fragment.appendText(
+              setup.old
+                ? `To do. ${setup.old.version} is installed, and this plugin needs ${MIN_CLI_VERSION} or later. Update it in a terminal: `
+                : 'To do. Run this in a terminal, with the npm that comes with Node.js: ',
+            );
+            fragment.createEl('code', { text: INSTALL_COMMAND });
+          }),
+        )
+        .addButton((button) =>
+          button.setButtonText('Copy').onClick(async () => {
+            await navigator.clipboard.writeText(INSTALL_COMMAND);
+            button.setButtonText('Copied');
+          }),
+        );
+      return;
+    }
 
     if (progress.error || !progress.status) {
       new Setting(el).setName('Page Scanner did not answer').setDesc(progress.error ?? '');
@@ -210,7 +235,7 @@ export class PageScannerSettingTab extends PluginSettingTab {
 
     const state = helperState(progress.status);
     new Setting(el)
-      .setName('2. Install the helper')
+      .setName('3. Install the helper')
       .setDesc(helperText(state, progress.status.nativeHost.node))
       .addButton((button) => {
         if (state === 'ready') {
@@ -237,7 +262,7 @@ export class PageScannerSettingTab extends PluginSettingTab {
       });
 
     const browsers = progress.status.browsers.map((browser) => browser.label);
-    const connect = new Setting(el).setName('3. Connect the browser');
+    const connect = new Setting(el).setName('4. Connect the browser');
     if (browsers.length > 0) {
       connect.setDesc(
         `Done. Connected: ${browsers.join(', ')}. Run "Scan a browser tab into the vault" from the command palette.`,
