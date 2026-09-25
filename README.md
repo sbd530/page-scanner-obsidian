@@ -51,10 +51,12 @@ vault already holds gets ` 2`, ` 3` added.
    finds (Homebrew's, `/usr/local/bin`, Volta's, fnm's default, or your shell's) and runs it on
    the Node it was installed for. A Node can also be named in the plugin's settings.
 
-3. Enable the plugin and open its settings. The steps at the top say what is done: press
+3. In Obsidian, open **Settings**, **Community plugins**, **Browse**, search for **Page Scanner**,
+   install it and enable it.
+4. Open the plugin's settings. The steps at the top say what is done: press
    **Install helper**, then open the extension's settings (the gear in its popup), go to
    **Local agents** and press **Connect**.
-4. Run **Scan a browser tab into the vault** from the command palette, or press the ribbon's scan
+5. Run **Scan a browser tab into the vault** from the command palette, or press the ribbon's scan
    button, and pick the tab.
 
 ## Settings
