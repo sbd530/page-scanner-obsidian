@@ -5,12 +5,13 @@
  * that embeds the PDF. The settings tab carries the setup steps and the scan's options.
  *
  * The CLI runs as a child process under a Node on this computer (lib/node.ts says why not
- * Obsidian's), from the copy main.js carries (lib/vendored.ts).
+ * Obsidian's), from the copy main.js carries, written to `~/.page-scanner/obsidian-cli/<version>/`
+ * (lib/vendored.ts): beside the CLI's own files, outside the vault, and never over the plugin's.
  */
 import { mkdtempSync, readFileSync, rmSync } from 'node:fs';
-import { tmpdir } from 'node:os';
+import { homedir, tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { FileSystemAdapter, normalizePath, Notice, Plugin, type TFile } from 'obsidian';
+import { normalizePath, Notice, Plugin, type TFile } from 'obsidian';
 import vendoredFiles from 'virtual:page-scanner-cli';
 import {
   isSetupMissing,
@@ -98,10 +99,8 @@ export default class PageScannerPlugin extends Plugin {
         inSettings: true,
       });
     }
-    const adapter = this.app.vault.adapter;
-    if (!(adapter instanceof FileSystemAdapter))
-      throw new Problem('Page Scanner runs on desktop only');
-    const directory = join(adapter.getBasePath(), this.manifest.dir ?? '', 'cli');
+    // One copy per CLI version, shared by every vault, where the CLI keeps its pairing and helper.
+    const directory = join(homedir(), '.page-scanner', 'obsidian-cli', CLI_VENDOR.version);
     return {
       node: node.path,
       bundle: writeVendoredCli(directory, vendoredFiles, CLI_VENDOR.sha256),

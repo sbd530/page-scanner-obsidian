@@ -69,7 +69,7 @@ from Obsidian.
 
 - **Files outside the vault.** The plugin writes Page Scanner's command-line tool (the published
   [`@page-scanner/cli`](https://www.npmjs.com/package/@page-scanner/cli) package, bundled into
-  `main.js`) into its own plugin folder and runs it with Node.js. The tool writes each scan into
+  `main.js`) into `~/.page-scanner/obsidian-cli/` and runs it from there with Node.js. The tool writes each scan into
   the system's temporary folder before the plugin moves it into the vault, and keeps its pairing
   and settings in `~/.page-scanner/`. **Install helper** writes a small launcher there, and for
   each browser a file saying where the launcher is: in the browser's `NativeMessagingHosts`

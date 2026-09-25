@@ -1,6 +1,6 @@
 /**
- * The CLI `main.js` carries (scripts/build.mjs), written into the plugin's folder where Node can
- * run it. A file that is missing, or differs from the hash recorded when the CLI was vendored,
+ * The CLI `main.js` carries (scripts/build.mjs), written where Node can run it, which main.ts
+ * puts under `~/.page-scanner/`, outside the vault and apart from the plugin's own files. A file that is missing, or differs from the hash recorded when the CLI was vendored,
  * is written again from what `main.js` carries; one that still differs after that is refused
  * rather than run. No `obsidian` import, so it is tested.
  */

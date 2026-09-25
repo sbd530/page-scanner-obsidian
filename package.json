@@ -1,6 +1,6 @@
 {
   "name": "page-scanner-obsidian",
-  "version": "1.0.0",
+  "version": "1.0.1",
   "description": "An Obsidian plugin that saves a browser tab into the vault as a vector PDF and a Markdown note, through the Page Scanner extension.",
   "license": "Apache-2.0",
   "author": "sbd530",
